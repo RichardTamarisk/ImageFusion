@@ -12,8 +12,8 @@ int main(int argc, char** argv)
 {
     // 进行图像纠正
     cv::Mat corrected_img1, corrected_img2;
-    correctedImage("l.png", corrected_img1);
-    correctedImage("r.png", corrected_img2);
+    correctedImage("l.jpg", corrected_img1);
+    correctedImage("r.jpg", corrected_img2);
 
     if (corrected_img1.empty() || corrected_img2.empty())
     {
@@ -78,12 +78,11 @@ int main(int argc, char** argv)
     std::cout << "Processing time: " << fp_ms.count() << " ms" << std::endl;
 
     // 保存拼接后的图像
-    imwrite("dst_result.jpg", dst);
+    imwrite("sift_corrected.jpg", dst);
 
     // 显示结果
-    imshow("Panorama", dst);
+    // imshow("Panorama", dst);
     waitKey(0);
 
     return 0;
 }
-

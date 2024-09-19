@@ -161,8 +161,6 @@ int main()
     drawFeaturePointsWithDirection(srcImage, featurePoints, directions);
 
     waitKey(0);
-
-    system("pause");
     return 0;
 }
 

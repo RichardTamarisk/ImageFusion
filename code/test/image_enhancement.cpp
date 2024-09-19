@@ -117,10 +117,8 @@ int main()
 	
 	imwrite("image_enhancement.png", outImage);
  
-	imshow("[原始图]", outImage);
+	// imshow("[原始图]", outImage);
 	waitKey(0);
  
- 
-	system("pause");
 	return 0;
 }

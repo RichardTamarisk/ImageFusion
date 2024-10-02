@@ -5,6 +5,8 @@
 
 static AVFormatContext *ifmt_ctx;
 static AVFormatContext *ofmt_ctx;
+static AVFormatContext *video_ofmt_ctx;
+static AVFormatContext *audio_ofmt_ctx;
 
 typedef struct StreamContext 
 {
@@ -37,22 +39,24 @@ static int open_input_file(const char *filename)
     if (!stream_ctx)
         return AVERROR(ENOMEM);
 
-    for (i = 0; i < ifmt_ctx->nb_streams; i++) 
+    for (i = 0; i < ifmt_ctx->nb_streams; i++)
     {
         AVStream *stream = ifmt_ctx->streams[i];
-        const AVCodec *dec = avcodec_find_decoder(stream->codecpar->codec_id);
         AVCodecContext *codec_ctx;
+        const AVCodec *dec = avcodec_find_decoder(stream->codecpar->codec_id);
         if (!dec) 
         {
             av_log(NULL, AV_LOG_ERROR, "Failed to find decoder for stream #%u\n", i);
             return AVERROR_DECODER_NOT_FOUND;
         }
+
         codec_ctx = avcodec_alloc_context3(dec);
         if (!codec_ctx) 
         {
             av_log(NULL, AV_LOG_ERROR, "Failed to allocate the decoder context for stream #%u\n", i);
             return AVERROR(ENOMEM);
         }
+
         ret = avcodec_parameters_to_context(codec_ctx, stream->codecpar);
         if (ret < 0) 
         {
@@ -60,11 +64,13 @@ static int open_input_file(const char *filename)
                    "for stream #%u\n", i);
             return ret;
         }
+
         /* Reencode video & audio and remux subtitles etc. */
         if (codec_ctx->codec_type == AVMEDIA_TYPE_VIDEO || codec_ctx->codec_type == AVMEDIA_TYPE_AUDIO) 
         {
             if (codec_ctx->codec_type == AVMEDIA_TYPE_VIDEO)
                 codec_ctx->framerate = av_guess_frame_rate(ifmt_ctx, stream, NULL);
+
             /* Open decoder */
             ret = avcodec_open2(codec_ctx, dec, NULL);
             if (ret < 0) 
@@ -76,6 +82,26 @@ static int open_input_file(const char *filename)
         stream_ctx[i].dec_ctx = codec_ctx;
 
         stream_ctx[i].dec_frame = av_frame_alloc();
+
+        if(stream_ctx[i].dec_ctx->codec_type == AVMEDIA_TYPE_VIDEO)
+        {
+            stream_ctx[i].dec_frame->format = stream_ctx[i].dec_ctx->pix_fmt;
+            stream_ctx[i].dec_frame->width = stream_ctx[i].dec_ctx->width;
+            stream_ctx[i].dec_frame->height = stream_ctx[i].dec_ctx->height;
+        }
+        else if(stream_ctx[i].dec_ctx->codec_type == AVMEDIA_TYPE_AUDIO)
+        {
+            stream_ctx[i].dec_frame->format = stream_ctx[i].dec_ctx->sample_fmt;
+            stream_ctx[i].dec_frame->nb_samples = stream_ctx[i].dec_ctx->frame_size;
+            if(av_channel_layout_copy(&stream_ctx[i].dec_frame->ch_layout, &stream_ctx[i].dec_ctx->channel_layout) < 0)
+            {
+                av_log(NULL, AV_LOG_ERROR, "Failed to copy channel layout\n");
+                return AVERROR(EINVAL);
+            }
+
+        }
+
+
         if (!stream_ctx[i].dec_frame)
             return AVERROR(ENOMEM);
     }
@@ -133,6 +159,7 @@ static int open_output_file(const char *filename)
                 av_log(NULL, AV_LOG_FATAL, "Necessary encoder not found\n");
                 return AVERROR_INVALIDDATA;
             }
+
             enc_ctx = avcodec_alloc_context3(encoder);
             if (!enc_ctx) 
             {
@@ -155,17 +182,24 @@ static int open_output_file(const char *filename)
                     enc_ctx->pix_fmt = dec_ctx->pix_fmt;
                 /* video time_base can be set to whatever is handy and supported by encoder */
                 enc_ctx->time_base = av_inv_q(dec_ctx->framerate);
+                enc_ctx->time_base = dec_ctx->time_base;
+                enc_ctx->bit_rate = dec_ctx->bit_rate;
             } else 
             {
-                // enc_ctx->sample_rate = dec_ctx->sample_rate;
-                enc_ctx->sample_rate = 48000;
+                // Audio
+                enc_ctx->sample_rate = dec_ctx->sample_rate;
                 ret = av_channel_layout_copy(&enc_ctx->ch_layout, &dec_ctx->ch_layout);
                 if (ret < 0)
                     return ret;
                 /* take first format from list of supported formats */
-                enc_ctx->sample_fmt = encoder->sample_fmts[0];
-                // enc_ctx->sample_fmt = AV_SAMPLE_FMT_S16;
-                enc_ctx->time_base = (AVRational){1, enc_ctx->sample_rate};
+                if(encoder->sample_fmts)
+                {
+                    enc_ctx->sample_fmt = encoder->sample_fmts[0];
+                } else
+                {
+                    enc_ctx->sample_fmt = AV_SAMPLE_FMT_FLTP;
+                }
+                enc_ctx->time_base = dec_ctx->time_base;
             }
 
             if (ofmt_ctx->oformat->flags & AVFMT_GLOBALHEADER)
@@ -185,7 +219,7 @@ static int open_output_file(const char *filename)
                 return ret;
             }
 
-            out_stream->time_base = enc_ctx->time_base;
+            out_stream->time_base = in_stream->time_base;
             stream_ctx[i].enc_ctx = enc_ctx;
         } else if (dec_ctx->codec_type == AVMEDIA_TYPE_UNKNOWN) 
         {
@@ -226,19 +260,15 @@ static int open_output_file(const char *filename)
     return 0;
 }
 
+
 static int encode_write_frame(unsigned int stream_index, int flush)
 {
     StreamContext *stream = &stream_ctx[stream_index];
     AVFrame *dec_frame = flush ? NULL : stream->dec_frame; // 使用解码后的帧
     AVPacket *enc_pkt = av_packet_alloc();
     int ret;
-
-    // av_log(NULL, AV_LOG_INFO, "Encoding frame\n");
-    av_packet_unref(enc_pkt);
-
-    // 发送解码帧到编码器
+    
     ret = avcodec_send_frame(stream->enc_ctx, dec_frame);
-
     if (ret < 0)
         return ret;
 
@@ -247,24 +277,27 @@ static int encode_write_frame(unsigned int stream_index, int flush)
         ret = avcodec_receive_packet(stream->enc_ctx, enc_pkt);
 
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-            return 0; // 没有更多的包可接收
-
-        // 准备包以进行复用
+            return 0; 
+        
+        // set packet pts and stream_index
         enc_pkt->stream_index = stream_index;
-        av_packet_rescale_ts(enc_pkt,
-                             stream->enc_ctx->time_base,
-                             ofmt_ctx->streams[stream_index]->time_base);
+        if(dec_frame)
+        {
+            enc_pkt->pts = dec_frame->pts;
+        }
+
+        
+        av_packet_rescale_ts(enc_pkt, stream->enc_ctx->time_base, ofmt_ctx->streams[stream_index]->time_base);
 
         av_log(NULL, AV_LOG_DEBUG, "Muxing frame\n");
 
-        // 复用编码后的帧
         ret = av_interleaved_write_frame(ofmt_ctx, enc_pkt);
-        av_packet_unref(enc_pkt); // 释放 enc_pkt 的内存
+        av_packet_unref(enc_pkt);
         if (ret < 0)
-            return ret; // 发生错误
+            return ret;
     }
 
-    return 0; // 正常完成
+    return 0;
 }
 
 static int flush_encoder(unsigned int stream_index)
@@ -273,7 +306,7 @@ static int flush_encoder(unsigned int stream_index)
                 AV_CODEC_CAP_DELAY))
         return 0;
 
-    av_log(NULL, AV_LOG_INFO, "Flushing stream #%u encoder\n", stream_index);
+    av_log(NULL, AV_LOG_INFO, "Flushing stream #%u encoder %s\n", stream_index, stream_ctx[stream_index].enc_ctx->codec->name);
     return encode_write_frame(stream_index, 1);
 }
 
@@ -306,8 +339,19 @@ int main(int argc, char **argv)
         stream_index = packet->stream_index;
         av_log(NULL, AV_LOG_DEBUG, "Demuxer gave frame of stream_index %u\n", stream_index);
 
-        // 解码包
-        ret = avcodec_send_packet(stream_ctx[stream_index].dec_ctx, packet);
+        av_packet_rescale_ts(packet, ifmt_ctx->streams[stream_index]->time_base, stream_ctx[stream_index].dec_ctx->time_base);
+
+        // ret = avcodec_send_packet(stream_ctx[stream_index].dec_ctx, packet);
+        av_log(NULL, AV_LOG_DEBUG, "Sending packet of type %s to decoder\n", stream_ctx[stream_index].dec_ctx->codec_type == AVMEDIA_TYPE_VIDEO ? "video" : "audio");
+        if (stream_ctx[stream_index].dec_ctx->codec_type == AVMEDIA_TYPE_VIDEO) 
+        {
+            // video
+            ret = avcodec_send_packet(stream_ctx[stream_index].dec_ctx, packet);
+        } else if (stream_ctx[stream_index].dec_ctx->codec_type == AVMEDIA_TYPE_AUDIO) 
+        {
+            // audio
+            ret = avcodec_send_packet(stream_ctx[stream_index].dec_ctx, packet);
+        }
         if (ret < 0) 
         {
             av_log(NULL, AV_LOG_ERROR, "Decoding failed\n");
@@ -322,7 +366,6 @@ int main(int argc, char **argv)
             else if (ret < 0)
                 goto end;
 
-            // 直接编码解码后的帧
             ret = encode_write_frame(stream_index, 0);
             if (ret < 0)
                 goto end;

@@ -12,8 +12,15 @@ int main(int argc, char** argv)
 {
     // 进行图像纠正
     cv::Mat corrected_img1, corrected_img2;
-    correctedImage("l.jpg", corrected_img1);
-    correctedImage("r.jpg", corrected_img2);
+    correctedImage("image_l_1.jpg", corrected_img1);
+    correctedImage("image_r_1.jpg", corrected_img2);
+
+    cv::imwrite("corrected_l.jpg", corrected_img1);
+    cv::imwrite("corrected_r.jpg", corrected_img2);
+
+    // // 不进行图像矫正
+    // cv::Mat corrected_img1 = cv::imread("new_l_2.jpg");
+    // cv::Mat corrected_img2 = cv::imread("new_r_2.jpg");
 
     if (corrected_img1.empty() || corrected_img2.empty())
     {
@@ -70,8 +77,6 @@ int main(int argc, char** argv)
     // 输出处理时间
     auto t1 = std::chrono::high_resolution_clock::now();
     // 透视变换和拼接
-
-    
     auto t2 = std::chrono::high_resolution_clock::now();
     
     std::chrono::duration<double, std::milli> fp_ms = t2 - t1;

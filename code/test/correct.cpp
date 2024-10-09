@@ -18,7 +18,7 @@ void correctedImage(const char* filename, cv::Mat& output)
         for (int cols = 0; cols < img.cols; cols++) // 示例为亮度调节
         {
             // 计算当前像素点到图像中心点的距离
-            r = sqrt((row - lenscenter.y) * (row - lenscenter.y) + (cols - lenscenter.x) * (cols - lenscenter.x)) * 0.67;
+            r = sqrt((row - lenscenter.y) * (row - lenscenter.y) + (cols - lenscenter.x) * (cols - lenscenter.x)) * 0.68;
             // r = sqrt((row - lenscenter.y) * (row - lenscenter.y) + (cols - lenscenter.x) * (cols - lenscenter.x)) * 0.75;
             // 根据距离 r 计算比例因子 s，且这里是用了差值算法，通过改变 r-k 成 r1-k，然后进行-拟合为以下的四项多项式公式
             s = 0.9998 - 4.2932 * pow(10, -4) * r + 3.4327 * pow(10, -6) * pow(r, 2) - 2.8526 * pow(10, -9) * pow(r, 3) + 9.8223 * pow(10, -13) * pow(r, 4); // 比例
@@ -66,20 +66,20 @@ void correctedImage(const char* filename, cv::Mat& output)
     // 将drcimg转换为cv::Mat对象
     drcimg.convertTo(output, CV_8UC3);
 
-    // 裁剪
-    int topCropHeight = drcimg.rows * 0.126; // 上方裁剪
-    int bottomCropHeight = drcimg.rows * 0.126; // 下方裁剪
-    int leftCropWidth = drcimg.cols * 0.07; // 左侧裁剪
-    int rightCropWidth = drcimg.cols * 0.072; // 右侧裁剪
+    // // 裁剪
+    // int topCropHeight = drcimg.rows * 0.126; // 上方裁剪
+    // int bottomCropHeight = drcimg.rows * 0.126; // 下方裁剪
+    // int leftCropWidth = drcimg.cols * 0.07; // 左侧裁剪
+    // int rightCropWidth = drcimg.cols * 0.072; // 右侧裁剪
 
-    cv::Rect roi(leftCropWidth, topCropHeight, drcimg.cols - leftCropWidth - rightCropWidth, drcimg.rows - topCropHeight - bottomCropHeight);
-    cv::Mat croppedImg = drcimg(roi);
-    output = croppedImg;
+    // cv::Rect roi(leftCropWidth, topCropHeight, drcimg.cols - leftCropWidth - rightCropWidth, drcimg.rows - topCropHeight - bottomCropHeight);
+    // cv::Mat croppedImg = drcimg(roi);
+    // output = croppedImg;
 
-    // // 不做裁剪
-    // cv::Mat drcimg_output;
-    // drcimg.convertTo(drcimg_output, CV_8UC3);
-    // output = drcimg_output;
+    // 不做裁剪
+    cv::Mat drcimg_output;
+    drcimg.convertTo(drcimg_output, CV_8UC3);
+    output = drcimg_output;
 
     double elapsed_time = double(clock() - start_time) / CLOCKS_PER_SEC;
     std::cout << "Elapsed time: " << elapsed_time << " seconds" << std::endl;

@@ -12,8 +12,8 @@ int main(int argc, char** argv)
 {
     // 进行图像纠正
     cv::Mat corrected_img1, corrected_img2;
-    correctedImage("image_l_1.jpg", corrected_img1);
-    correctedImage("image_r_1.jpg", corrected_img2);
+    correctedImage("new_l_2.jpg", corrected_img1);
+    correctedImage("new_r_2.jpg", corrected_img2);
 
     cv::imwrite("corrected_l.jpg", corrected_img1);
     cv::imwrite("corrected_r.jpg", corrected_img2);
@@ -36,6 +36,35 @@ int main(int argc, char** argv)
     cv::Mat descriptors1, descriptors2;
     detector->detectAndCompute(corrected_img1, cv::Mat(), keypoints1, descriptors1);
     detector->detectAndCompute(corrected_img2, cv::Mat(), keypoints2, descriptors2);
+
+
+    // 绘制特征点
+    cv::Mat img_arrows1 = corrected_img1.clone();
+    cv::Mat img_arrows2 = corrected_img2.clone();
+
+    for (const auto& keypoint : keypoints1)
+    {
+        cv::Point2f pt = keypoint.pt;
+        float angle = keypoint.angle;  
+
+        // 箭头的终点
+        cv::Point2f end_pt = pt + cv::Point2f(10 * cos(angle * CV_PI / 180), 10 * sin(angle * CV_PI / 180));
+        cv::arrowedLine(img_arrows1, pt, end_pt, cv::Scalar(0, 255, 0), 1);
+    }
+
+    for (const auto& keypoint : keypoints2)
+    {
+        cv::Point2f pt = keypoint.pt;
+        float angle = keypoint.angle;  
+
+        // 箭头的终点
+        cv::Point2f end_pt = pt + cv::Point2f(10 * cos(angle * CV_PI / 180), 10 * sin(angle * CV_PI / 180));
+        cv::arrowedLine(img_arrows2, pt, end_pt, cv::Scalar(0, 255, 0), 1);
+    }
+
+    // 保存绘制的箭头图像
+    cv::imwrite("arrows_l.jpg", img_arrows1);
+    cv::imwrite("arrows_r.jpg", img_arrows2);
 
     // 创建基于FLANN的描述子匹配器
     Ptr<cv::DescriptorMatcher> matcher = DescriptorMatcher::create(DescriptorMatcher::FLANNBASED);

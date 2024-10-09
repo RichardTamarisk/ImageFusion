@@ -1,124 +1,138 @@
 #include <iostream>
-#include <vector>
-#include <optional>
-#include <tuple>
 #include <opencv2/core.hpp>
 #include <opencv2/features2d.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/flann.hpp>
 #include <opencv2/opencv.hpp>
+#include "correct.h"
 
-using namespace cv;
-using namespace std;
+int main(int argc, char** argv)
+{
+    // 进行图像纠正
+    cv::Mat corrected_img1, corrected_img2;
+    correctedImage("new_l_9.jpg", corrected_img1);
+    correctedImage("new_r_9.jpg", corrected_img2);
 
-class ImageStitcher {
-public:
-    Mat stitch(const vector<Mat>& images, double ratio = 0.75, double reprojThresh = 4.0, bool showMatches = false) {
-        Mat imageA = images[0];
-        Mat imageB = images[1];
+    cv::imwrite("corrected_l.jpg", corrected_img1);
+    cv::imwrite("corrected_r.jpg", corrected_img2);
 
-        // 检测A、B图片的SIFT关键特征点，并计算特征描述子
-        auto [kpsA, featuresA] = detectAndDescribe(imageA);
-        auto [kpsB, featuresB] = detectAndDescribe(imageB);
+    if (corrected_img1.empty() || corrected_img2.empty())
+    {
+        std::cerr << "Error: Failed to load corrected images." << std::endl;
+        return 1;
+    }
 
-        // 匹配两张图片的所有特征点，返回匹配结果
-        auto M = matchKeypoints(kpsA, kpsB, featuresA, featuresB, ratio, reprojThresh);
+    // 创建SIFT特征检测器
+    cv::Ptr<cv::SIFT> detector = cv::SIFT::create();
 
-        // 如果返回结果为空，没有匹配成功的特征点，退出算法
-        if (!M.has_value()) {
-            return Mat();
+    // 检测SIFT关键点和描述子
+    std::vector<cv::KeyPoint> keypoints1, keypoints2;
+    cv::Mat descriptors1, descriptors2;
+    detector->detectAndCompute(corrected_img1, cv::Mat(), keypoints1, descriptors1);
+    detector->detectAndCompute(corrected_img2, cv::Mat(), keypoints2, descriptors2);
+
+    // 绘制特征点
+    cv::Mat img_arrows1 = corrected_img1.clone();
+    cv::Mat img_arrows2 = corrected_img2.clone();
+
+    for (const auto& keypoint : keypoints1)
+    {
+        cv::Point2f pt = keypoint.pt;
+        float angle = keypoint.angle;
+
+        // 箭头的终点
+        cv::Point2f end_pt = pt + cv::Point2f(10 * cos(angle * CV_PI / 180), 10 * sin(angle * CV_PI / 180));
+        cv::arrowedLine(img_arrows1, pt, end_pt, cv::Scalar(0, 255, 0), 1);
+    }
+
+    for (const auto& keypoint : keypoints2)
+    {
+        cv::Point2f pt = keypoint.pt;
+        float angle = keypoint.angle;
+
+        // 箭头的终点
+        cv::Point2f end_pt = pt + cv::Point2f(10 * cos(angle * CV_PI / 180), 10 * sin(angle * CV_PI / 180));
+        cv::arrowedLine(img_arrows2, pt, end_pt, cv::Scalar(0, 255, 0), 1);
+    }
+
+    // 保存绘制的箭头图像
+    cv::imwrite("arrows_l.jpg", img_arrows1);
+    cv::imwrite("arrows_r.jpg", img_arrows2);
+
+    // 创建基于FLANN的描述子匹配器
+    cv::Ptr<cv::DescriptorMatcher> matcher = cv::DescriptorMatcher::create(cv::DescriptorMatcher::FLANNBASED);
+
+    // 使用FLANN进行描述子匹配
+    std::vector<std::vector<cv::DMatch>> matches;
+    matcher->knnMatch(descriptors1, descriptors2, matches, 2);
+
+    // 筛选出良好的匹配点对
+    std::vector<cv::DMatch> good_matches;
+    for (size_t i = 0; i < matches.size(); i++)
+    {
+        if (matches[i][0].distance < 0.7 * matches[i][1].distance)
+        {
+            good_matches.push_back(matches[i][0]);
         }
-
-        // 否则，提取匹配结果
-        auto [matches, H, status] = M.value();
-
-        // 将图片A进行视角变换
-        Mat result;
-        warpPerspective(imageA, result, H, Size(imageA.cols + imageB.cols, imageA.rows));
-        result(Rect(0, 0, imageB.cols, imageB.rows)) = imageB;
-
-        // 检测是否需要显示图片匹配
-        if (showMatches) {
-            Mat vis = drawMatches(imageA, imageB, kpsA, kpsB, matches, status);
-            imshow("Keypoint Matches", vis);
-        }
-
-        return result;
     }
 
-private:
-    tuple<vector<KeyPoint>, Mat> detectAndDescribe(const Mat& image) {
-        Mat gray;
-        cvtColor(image, gray, COLOR_BGR2GRAY);
-        Ptr<SIFT> descriptor = SIFT::create();
-        vector<KeyPoint> kps;
-        Mat features;
-        descriptor->detectAndCompute(gray, noArray(), kps, features);
-        return make_tuple(kps, features);
+    // 提取匹配的关键点
+    std::vector<cv::Point2f> points1, points2;
+    for (const auto& match : good_matches)
+    {
+        points1.push_back(keypoints1[match.queryIdx].pt);
+        points2.push_back(keypoints2[match.trainIdx].pt);
     }
 
-    optional<tuple<vector<DMatch>, Mat, Mat>> matchKeypoints(const vector<KeyPoint>& kpsA, const vector<KeyPoint>& kpsB, const Mat& featuresA, const Mat& featuresB, double ratio, double reprojThresh) {
-        BFMatcher matcher(NORM_L2);
-        vector<vector<DMatch>> rawMatches;
-        matcher.knnMatch(featuresA, featuresB, rawMatches, 2);
+    // 创建一个新的图像，显示配对的特征点对
+    int new_width = corrected_img1.cols + corrected_img2.cols;
+    int new_height = std::max(corrected_img1.rows, corrected_img2.rows);
+    cv::Mat new_img(new_height, new_width, CV_8UC3);
 
-        vector<DMatch> matches;
-        for (const auto& m : rawMatches) {
-            if (m.size() == 2 && m[0].distance < m[1].distance * ratio) {
-                matches.push_back(m[0]);
-            }
-        }
+    // 将两张图像放入新的图像中
+    corrected_img1.copyTo(new_img(cv::Rect(0, 0, corrected_img1.cols, corrected_img1.rows)));
+    corrected_img2.copyTo(new_img(cv::Rect(corrected_img1.cols, 0, corrected_img2.cols, corrected_img2.rows)));
 
-        if (matches.size() > 4) {
-            vector<Point2f> ptsA, ptsB;
-            for (const auto& match : matches) {
-                ptsA.push_back(kpsA[match.queryIdx].pt);
-                ptsB.push_back(kpsB[match.trainIdx].pt);
-            }
-            Mat H = findHomography(ptsA, ptsB, RANSAC, reprojThresh);
-            return make_tuple(matches, H, Mat());
-        }
+    // 绘制配对的特征点对
+    for(const auto &match : good_matches)
+    {
+        // 图像1的特征点
+        cv::Point2f pt1 = keypoints1[match.queryIdx].pt;
+        // 图像2的特征点，调整位置以匹配拼接后的图像
+        cv::Point2f pt2 = keypoints2[match.trainIdx].pt + cv::Point2f(corrected_img1.cols, 0);
 
-        return nullopt;
+        // 绘制连接线
+        cv::line(new_img, pt1, pt2, cv::Scalar(255, 0, 0), 1);
     }
 
-    Mat drawMatches(const Mat& imageA, const Mat& imageB, const vector<KeyPoint>& kpsA, const vector<KeyPoint>& kpsB, const vector<DMatch>& matches, const Mat& status) {
-        Mat vis;
-        hconcat(imageA, imageB, vis);
-        
-        for (const auto& match : matches) {
-            Point2f ptA = kpsA[match.queryIdx].pt;
-            Point2f ptB = kpsB[match.trainIdx].pt + Point2f(static_cast<float>(imageA.cols), 0);
-            line(vis, ptA, ptB, Scalar(0, 255, 0), 1);
-        }
+    // 保存配对的特征点对图像
+    cv::imwrite("matches.jpg", new_img);
 
-        return vis;
-    }
-};
+    // 使用RANSAC算法计算单应性变换矩阵
+    cv::Mat homography;
+    homography = cv::findHomography(points2, points1, cv::RANSAC);
 
-int main() {
-    // 读取拼接图片
-    Mat imageA = imread("l.jpg");
-    Mat imageB = imread("r.jpg");
+    // 透视变换
+    cv::Mat dst;
+    cv::warpPerspective(corrected_img2, dst, homography, cv::Size(corrected_img1.cols + corrected_img2.cols, corrected_img1.rows + corrected_img2.rows));
 
-    if (imageA.empty() || imageB.empty()) {
-        cerr << "Error loading images!" << endl;
-        return -1;
-    }
+    // 将图像A拼接到透视变换结果上
+    cv::Rect roi_rect = cv::Rect(0, 0, corrected_img1.cols, corrected_img1.rows);
+    corrected_img1.copyTo(dst(roi_rect));
 
-    // 创建拼接器实例
-    ImageStitcher stitcher;
+    // 输出处理时间
+    auto t1 = std::chrono::high_resolution_clock::now();
+    auto t2 = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> fp_ms = t2 - t1;
+    std::cout << "Processing time: " << fp_ms.count() << " ms" << std::endl;
 
-    // 把图片拼接成全景图
-    Mat result = stitcher.stitch({ imageA, imageB }, true);
+    // 保存拼接后的图像
+    cv::imwrite("sift_corrected.jpg", dst);
 
-    if (!result.empty()) {
-        imwrite("result.jpg", result);
-        // imshow("Result", result);
-        waitKey(0);
-    } else {
-        cout << "Stitching failed!" << endl;
-    }
+    // 显示结果
+    // cv::imshow("Panorama", dst);
+    cv::waitKey(0);
 
     return 0;
 }

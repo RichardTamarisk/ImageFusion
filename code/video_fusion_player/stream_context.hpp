@@ -65,7 +65,7 @@ public:
     int get_id() { return id; }
     int decode_loop() {
         int ret = -1;
-        while(av_read_frame(fmtCtx, pkt) >= 0){
+        while(av_read_frame(fmtCtx, pkt) >= 0 && !quit){
             if(pkt->stream_index == idx ){
                 //decode
                 ret = decode();
@@ -76,7 +76,12 @@ public:
             }
             av_packet_unref(pkt);
         }
-        decode();
+        if (!quit) {
+            decode();
+            av_log(NULL, AV_LOG_INFO, "No more packet!\n");
+            // there is no more packet
+            // quit = true;
+        }
         return ret;
     }
     int decode() {

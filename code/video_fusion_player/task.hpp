@@ -15,7 +15,7 @@ public:
                     i, tmp_queue));
         }
         queue_frame_fused_ = std::make_shared<std::queue<AVFrame>>();
-        av_log(NULL, AV_LOG_ERROR, "Task init! %p\n", this);
+        av_log(NULL, AV_LOG_INFO, "Task init! %p\n", this);
         // Start the frame processing thread
         worker_thread_ = std::thread(&Task::run, this);
     }
@@ -127,7 +127,7 @@ public:
         AVFrame* frame2 = av_frame_alloc();
         AVFrame* frame_fused = av_frame_alloc();
 
-        while (true) {
+        while (!quit) {
             std::unique_lock<std::mutex> lock(mutex_);
 
             // Add null-checks for the queues before accessing them
@@ -154,10 +154,10 @@ public:
                 }
             }
         }
-        // Clean up
-        av_frame_free(&frame1);
-        av_frame_free(&frame2);
-        av_frame_free(&frame_fused);
+        // Clean up   
+        // if (frame1) av_frame_free(&frame1);
+        // if (frame2) av_frame_free(&frame2);
+        // if (frame_fused) av_frame_free(&frame_fused);
     }
     std::shared_ptr<std::queue<AVFrame>> get_queue_frame_fused() {
         return queue_frame_fused_;

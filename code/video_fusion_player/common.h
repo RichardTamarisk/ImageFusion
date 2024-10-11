@@ -1,3 +1,5 @@
+#ifndef COMMON_H
+#define COMMON_H
 extern "C" {
 #include <SDL.h>
 #include <libavformat/avformat.h>
@@ -13,3 +15,6 @@ extern "C" {
 #include <condition_variable>
 #include <thread>
 #include <atomic>
+
+static std::atomic<bool> quit{false};
+#endif

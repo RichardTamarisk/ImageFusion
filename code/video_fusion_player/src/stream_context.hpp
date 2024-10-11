@@ -25,11 +25,11 @@ public:
         int ret = -1;
         //open multimedia file and get stream info
         if( (ret = avformat_open_input(&sc->fmtCtx, sc->filePath, NULL, NULL)) < 0 ) {
-            // av_log(NULL, AV_LOG_ERROR, " %s \n", av_err2str(ret));
+            av_log(NULL, AV_LOG_ERROR, " %s \n", av_err2str(ret));
             goto end;
         }
         if((ret = avformat_find_stream_info(sc->fmtCtx, NULL)) < 0) {
-            // av_log(NULL, AV_LOG_ERROR, "%s\n", av_err2str(ret));
+            av_log(NULL, AV_LOG_ERROR, "%s\n", av_err2str(ret));
             goto end;
         }
         //find the best stream
@@ -56,7 +56,7 @@ public:
         //bind decoder and decoder context
         ret = avcodec_open2(sc->ctx, sc->decodec, NULL);
         if(ret < 0){
-            // av_log(NULL, AV_LOG_ERROR, "Couldn't open the codec: %s\n", av_err2str(ret));
+            av_log(NULL, AV_LOG_ERROR, "Couldn't open the codec: %s\n", av_err2str(ret));
             goto end;
         }
     end:
@@ -65,7 +65,7 @@ public:
     int get_id() { return id; }
     int decode_loop() {
         int ret = -1;
-        while(av_read_frame(fmtCtx, pkt) >= 0){
+        while(av_read_frame(fmtCtx, pkt) >= 0 && !quit){
             if(pkt->stream_index == idx ){
                 //decode
                 ret = decode();
@@ -76,7 +76,12 @@ public:
             }
             av_packet_unref(pkt);
         }
-        decode();
+        if (!quit) {
+            decode();
+            av_log(NULL, AV_LOG_INFO, "No more packet!\n");
+            // there is no more packet
+            // quit = true;
+        }
         return ret;
     }
     int decode() {

@@ -28,7 +28,6 @@ static int w_height = 1080;
 
 static SDL_Window *win = NULL;
 static SDL_Renderer *renderer = NULL;
-static std::atomic<bool> quit{false};
 
 static void render_frame(SDL_Texture *texture, AVFrame *frame, int frameRate) {
     if (!frame) {
@@ -57,7 +56,7 @@ static void render_frame(SDL_Texture *texture, AVFrame *frame, int frameRate) {
 }
 
 // Thread function to handle SDL events and rendering
-static void sdl_render_thread(std::shared_ptr<Task> task, SDL_Texture *texture) {
+static void sdl_render_thread(std::shared_ptr<Task> task, SDL_Texture *texture, int frameRate) {
     SDL_Event event;
     auto fused_frame_queue = task->get_queue_frame_fused();
 
@@ -66,18 +65,33 @@ static void sdl_render_thread(std::shared_ptr<Task> task, SDL_Texture *texture) 
         if (!fused_frame_queue->empty()) {
             AVFrame frame = fused_frame_queue->front();
             fused_frame_queue->pop();
-            render_frame(texture, &frame, 30); // Assuming 30 FPS for now
+
+            texture = SDL_CreateTexture(renderer, 
+                                SDL_PIXELFORMAT_IYUV, 
+                                SDL_TEXTUREACCESS_STREAMING, 
+                                frame.width, 
+                                frame.height);
+                    
+            if (!texture) {
+                av_log(NULL, AV_LOG_ERROR, "Failed to create texture: %s\n", SDL_GetError());
+                SDL_DestroyRenderer(renderer);
+                SDL_DestroyWindow(win);
+                SDL_Quit();
+                quit = true;
+            }
+
+            render_frame(texture, &frame, frameRate); // Assuming 30 FPS for now
         }
 
         // Poll for SDL events
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT) {
-                quit = true;
-                break;
-            }
-        }
+        // while (SDL_PollEvent(&event)) {
+        //     if (event.type == SDL_QUIT) {
+        //         quit = true;
+        //         break;
+        //     }
+        // }
 
-        SDL_Delay(10); // Reduce CPU usage
+        // SDL_Delay(10); // Reduce CPU usage
     }
 }
 
@@ -94,6 +108,7 @@ void sdl_event_thread() {
             }
             // Handle other events...
         }
+        SDL_Delay(10); // Reduce CPU usage
     }
 }
 
@@ -133,65 +148,25 @@ int main(int argc, char *argv[])
     }   
     renderer = SDL_CreateRenderer(win, -1, 0);
 
-    // Create texture for render 
-    pixformat = SDL_PIXELFORMAT_IYUV;
+    int frameRate = sc_0->stream->r_frame_rate.num / sc_1->stream->r_frame_rate.den;
     
     // Launch decoding threads for both video streams
     std::thread decode_thread_1(&StreamContext::decode_loop, sc_0);
     std::thread decode_thread_2(&StreamContext::decode_loop, sc_1);
     // Start the rendering thread with parameters (task and texture)
-    // std::thread render_thread(sdl_render_thread, task, texture);
+    std::thread render_thread(sdl_render_thread, task, texture, frameRate);
     // Handle events on the main thread
     // sdl_event_thread();
     // Wait for decoding threads to finish
     decode_thread_1.join();
     decode_thread_2.join();
+
+
+    // sdl_render_thread(task, texture, frameRate);
+    sdl_event_thread();
+
     // Wait for rendering thread to finish before exiting
-    // render_thread.join();
-
-
-    int frameRate = sc_0->stream->r_frame_rate.num / sc_1->stream->r_frame_rate.den;
-    
-    auto queue_frame = task->get_queue_frame_fused();
-    //decode
-    while (true) {
-        SDL_PollEvent(&event);
-        if (event.type == SDL_QUIT) {
-            quit = true;
-        } else if (event.type == SDL_KEYDOWN) {
-            switch (event.key.keysym.sym) {
-                case SDLK_ESCAPE:
-                    quit = true;
-                    break;
-                case SDLK_SPACE:
-                    // Pause or other functionality
-                    break;
-                default:
-                    break;
-            }
-        }
-        
-        if (!queue_frame->empty()) {
-            auto frame = queue_frame->front();
-            queue_frame->pop();
-
-            texture = SDL_CreateTexture(renderer, 
-                                pixformat, 
-                                SDL_TEXTUREACCESS_STREAMING, 
-                                frame.width, 
-                                frame.height);
-                    
-            if (!texture) {
-                av_log(NULL, AV_LOG_ERROR, "Failed to create texture: %s\n", SDL_GetError());
-                SDL_DestroyRenderer(renderer);
-                SDL_DestroyWindow(win);
-                SDL_Quit();
-                return EXIT_FAILURE;
-            }
-
-            render_frame(texture, &frame, frameRate);
-        }
-    }
+    render_thread.join();
 
     // Cleanup resources
     if (texture) SDL_DestroyTexture(texture);

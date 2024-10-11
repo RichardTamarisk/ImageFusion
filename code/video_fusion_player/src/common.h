@@ -1,3 +1,5 @@
+#ifndef COMMON_H
+#define COMMON_H
 extern "C" {
 #include <SDL.h>
 #include <libavformat/avformat.h>
@@ -14,10 +16,5 @@ extern "C" {
 #include <thread>
 #include <atomic>
 
-#include <iostream>
-#include <opencv2/core.hpp>
-#include <opencv2/features2d.hpp>
-#include <opencv2/highgui.hpp>
-#include <opencv2/imgproc.hpp>
-#include <opencv2/flann.hpp>
-#include <opencv2/opencv.hpp>
+static std::atomic<bool> quit{false};
+#endif

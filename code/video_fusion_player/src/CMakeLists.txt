@@ -21,7 +21,7 @@ add_executable(DisplayImage player.cpp)
 # Link the libraries to the executable
 target_link_libraries(DisplayImage 
     PkgConfig::FFmpeg
-    ${OpenCV_LIBS}  # 使用 OpenCV_LIBS 代替 OpenCV::OpenCV
+    ${OpenCV_LIBS}  # Use OpenCV_LIBS replace OpenCV::OpenCV
     SDL2::SDL2
 )
 

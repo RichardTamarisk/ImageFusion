@@ -25,11 +25,11 @@ public:
         int ret = -1;
         //open multimedia file and get stream info
         if( (ret = avformat_open_input(&sc->fmtCtx, sc->filePath, NULL, NULL)) < 0 ) {
-            av_log(NULL, AV_LOG_ERROR, " %s \n", av_err2str(ret));
+            // av_log(NULL, AV_LOG_ERROR, " %s \n", av_err2str(ret));
             goto end;
         }
         if((ret = avformat_find_stream_info(sc->fmtCtx, NULL)) < 0) {
-            av_log(NULL, AV_LOG_ERROR, "%s\n", av_err2str(ret));
+            // av_log(NULL, AV_LOG_ERROR, "%s\n", av_err2str(ret));
             goto end;
         }
         //find the best stream
@@ -56,7 +56,7 @@ public:
         //bind decoder and decoder context
         ret = avcodec_open2(sc->ctx, sc->decodec, NULL);
         if(ret < 0){
-            av_log(NULL, AV_LOG_ERROR, "Couldn't open the codec: %s\n", av_err2str(ret));
+            // av_log(NULL, AV_LOG_ERROR, "Couldn't open the codec: %s\n", av_err2str(ret));
             goto end;
         }
     end:

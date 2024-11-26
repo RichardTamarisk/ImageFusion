@@ -89,91 +89,11 @@ public:
      * @param frame1 The first input AVFrame.
      * @param frame2 The second input AVFrame.
      * @param frame_fused The output AVFrame that will contain the fused image.
+     * @param is_correct The boolean value will determine whether to perform image correction
      * @return True if the fusion process is successful, false otherwise.
      */
-    bool image_fusion(AVFrame *frame1, AVFrame *frame2, AVFrame *frame_fused) {
-        if (frame1->width != frame2->width || frame1->height != frame2->height) {
-            av_log(NULL, AV_LOG_ERROR, "Frame sizes do not match for fusion!\n");
-            return false;
-        }
-
-        // Convert AVFrame to cv::Mat
-        cv::Mat img1(frame1->height, frame1->width, CV_8UC3, frame1->data[0]); 
-        cv::Mat img2(frame2->height, frame2->width, CV_8UC3, frame2->data[0]); 
-
-        // Create the SIFT feature detector
-        cv::Ptr<cv::SIFT> detector = cv::SIFT::create();
-
-        // Detect SIFT key points and descriptors
-        std::vector<cv::KeyPoint> keypoints1, keypoints2;
-        cv::Mat descriptors1, descriptors2;
-        detector->detectAndCompute(img1, cv::Mat(), keypoints1, descriptors1);
-        detector->detectAndCompute(img2, cv::Mat(), keypoints2, descriptors2);
-
-        // Create a Flann-based descriptor matcher
-        cv::Ptr<cv::DescriptorMatcher> matcher = cv::DescriptorMatcher::create(cv::DescriptorMatcher::FLANNBASED);
-        std::vector<std::vector<cv::DMatch>> matches;
-        matcher->knnMatch(descriptors1, descriptors2, matches, 2);
-
-        // Screen out good matching point pairs
-        std::vector<cv::DMatch> good_matches;
-        for (size_t i = 0; i < matches.size(); i++) {
-            if (matches[i][0].distance < 0.7 * matches[i][1].distance) {
-                good_matches.push_back(matches[i][0]);
-            }
-        }
-
-        // Extract the key points of the match
-        std::vector<cv::Point2f> points1, points2;
-        for (const auto& match : good_matches) {
-            points1.push_back(keypoints1[match.queryIdx].pt);
-            points2.push_back(keypoints2[match.trainIdx].pt);
-        }
-
-        // The RANSAC algorithm was used to compute the homologous transformation matrix
-        cv::Mat homography = cv::findHomography(points2, points1, cv::RANSAC);
-
-        // perspective transformation
-        cv::Mat dst;
-        cv::warpPerspective(img2, dst, homography, cv::Size(img1.cols + img2.cols, img1.rows));
-
-        // Splice image A onto the perspective transform result
-        cv::Rect roi_rect = cv::Rect(0, 0, img1.cols, img1.rows);
-        img1.copyTo(dst(roi_rect));
-
-        // Convert the spliced image to AVFrame
-        // It is assumed that the frame fused is the same size as dst
-        frame_fused->width = dst.cols;
-        frame_fused->height = dst.rows;
-    
-        // The dst data needs to be copied into the frame fused
-        // Suppose the frame fused data format is CV 8UC3
-        memcpy(frame_fused->data[0], dst.data, dst.total() * dst.elemSize());
-
-        // Copy the basic properties of frame1 to the fused frame
-        copyFrame(frame1, frame_fused);
-
-        // // Perform pixel-wise averaging (assuming YUV420P format)
-        // for (int y = 0; y < frame1->height; y++) {
-        //     for (int x = 0; x < frame1->width; x++) {
-        //         // Y plane (grayscale)
-        //         frame_fused->data[0][y * frame_fused->linesize[0] + x] =
-        //             (frame1->data[0][y * frame1->linesize[0] + x] + frame2->data[0][y * frame2->linesize[0] + x]) / 2;
-        //     }
-        // }
-
-        // // UV planes (color)
-        // for (int y = 0; y < frame1->height / 2; y++) {
-        //     for (int x = 0; x < frame1->width / 2; x++) {
-        //         frame_fused->data[1][y * frame_fused->linesize[1] + x] =
-        //             (frame1->data[1][y * frame1->linesize[1] + x] + frame2->data[1][y * frame2->linesize[1] + x]) / 2;
-        //         frame_fused->data[2][y * frame_fused->linesize[2] + x] =
-        //             (frame1->data[2][y * frame1->linesize[2] + x] + frame2->data[2][y * frame2->linesize[2] + x]) / 2;
-        //     }
-        // }
-
-        return true;
-    }
+    // This function declare here just to show interface design
+    // bool image_fusion(AVFrame *frame1, AVFrame *frame2, AVFrame *frame_fused, bool is_correct) {}
 
     void run() {
         AVFrame* frame1 = av_frame_alloc();

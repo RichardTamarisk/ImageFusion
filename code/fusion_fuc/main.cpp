@@ -11,13 +11,13 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    // 确保图像深度为 CV_8U
-    if (img1.depth() != CV_8U) {
-        img1.convertTo(img1, CV_8U);
-    }
-    if (img2.depth() != CV_8U) {
-        img2.convertTo(img2, CV_8U);
-    }
+    // // 确保图像深度为 CV_8U
+    // if (img1.depth() != CV_8U) {
+    //     img1.convertTo(img1, CV_8U);
+    // }
+    // if (img2.depth() != CV_8U) {
+    //     img2.convertTo(img2, CV_8U);
+    // }
 
     // 将 cv::Mat 转换为 AVFrame
     AVFrame *frame1 = cvmatToAvframe(&img1, nullptr);
@@ -29,10 +29,6 @@ int main(int argc, char** argv) {
         return -1;
     }
 
-    // 输出调试信息
-    std::cout << "Frame1 size: " << frame1->width << "x" << frame1->height << std::endl;
-    std::cout << "Frame2 size: " << frame2->width << "x" << frame2->height << std::endl;
-
     // 创建输出帧
     AVFrame *frame_fused = av_frame_alloc();
     if (!frame_fused) {
@@ -41,7 +37,7 @@ int main(int argc, char** argv) {
     }
 
     // 调用 image_fusion 函数
-    bool success = image_fusion(frame1, frame2, frame_fused, true);
+    bool success = image_fusion(frame1, frame2, frame_fused, false);
     if (success) {
         std::cout << "图像拼接成功！" << std::endl;
         // 处理输出帧，如保存或显示

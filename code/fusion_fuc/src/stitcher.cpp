@@ -9,60 +9,79 @@
 // Description: AVFrame转MAT
 //************************************
 cv::Mat avframeToCvmat(const AVFrame *frame) {
-    if (!frame) {
+	if (!frame) {
         std::cerr << "Frame is null." << std::endl;
         return cv::Mat(); // 返回空 Mat
     }
 
-    int width = frame->width;
-    int height = frame->height;
+    int image_width = frame->width;
+    int image_height = frame->height;
 
-    if (!frame->data[0]) {
-        std::cerr << "Invalid AVFrame data." << std::endl;
-        return cv::Mat(); // 返回空 Mat
-    }
-
-    // 输出格式名称
-    std::cout << "AVFrame format: " << av_get_pix_fmt_name((AVPixelFormat)frame->format) << std::endl;
-
-    cv::Mat image(height, width, CV_8UC3);
-    int cvLinesizes[1];
-    cvLinesizes[0] = image.step[0];
+    // 创建 OpenCV Mat 对象
+    cv::Mat resMat(image_height, image_width, CV_8UC3);
 
     // 创建转换上下文
-    SwsContext *conversion = sws_getContext(
-        width, height, (AVPixelFormat)frame->format, width, height,
-        AV_PIX_FMT_BGR24, SWS_FAST_BILINEAR, NULL, NULL, NULL);
-    
-    if (!conversion) {
-        std::cerr << "Could not create conversion context." << std::endl;
+    SwsContext* avFrameToOpenCVBGRSwsContext = sws_getContext(
+        image_width,
+        image_height,
+        (AVPixelFormat)frame->format, // 确保这里使用正确的源格式
+        image_width,
+        image_height,
+        AV_PIX_FMT_BGR24,
+        SWS_FAST_BILINEAR,
+        nullptr, nullptr, nullptr
+    );
+
+    if (!avFrameToOpenCVBGRSwsContext) {
+        std::cerr << "Could not create sws context." << std::endl;
         return cv::Mat();
     }
 
     // 使用 sws_scale 转换图像
-    int result = sws_scale(conversion, frame->data, frame->linesize, 0, height,
-                            reinterpret_cast<uint8_t**>(&image.data), cvLinesizes);
-    sws_freeContext(conversion);
+    const uint8_t *srcSlice[1] = { frame->data[0] }; // 创建指向源数据的指针数组
+    int srcLinesizes[1] = { frame->linesize[0] }; // 源数据的步幅
+
+    // 使用 int 类型的目标步幅
+    int dstLinesizes[1] = { static_cast<int>(resMat.step[0]) }; // 使用转换后的步幅
+
+    int result = sws_scale(avFrameToOpenCVBGRSwsContext,
+                            srcSlice, srcLinesizes,
+                            0,
+                            image_height,
+                            reinterpret_cast<uint8_t* const*>(&resMat.data), // 确保这里是正确的指针类型
+                            dstLinesizes);
+
+    // 释放转换上下文
+    sws_freeContext(avFrameToOpenCVBGRSwsContext);
 
     // 检查转换是否成功
     if (result <= 0) {
         std::cerr << "sws_scale failed." << std::endl;
-        return cv::Mat(); 
+        return cv::Mat();
     }
 
-    std::cout << "Converted image size: " << image.size() 
-              << ", depth: " << image.depth() << std::endl;
+    // 检查 resMat 数据
+    if (resMat.empty() || resMat.data == nullptr) {
+        std::cerr << "Converted image is empty or data is null." << std::endl;
+        return cv::Mat();
+    }
 
-    // 检查深度并转换
-    if (image.depth() != CV_8U) {
+    // 确保图像深度为 CV_8U
+    if (resMat.depth() != CV_8U) {
         cv::Mat image8u;
-        image.convertTo(image8u, CV_8U);
-        image = image8u; // 更新图像为转换后的版本
+        resMat.convertTo(image8u, CV_8U);
+        resMat = image8u; // 更新图像为转换后的版本
+        std::cout << "Converted image depth: " << resMat.depth() << std::endl;
     }
 
-    return image;
-}
+    // 输出图像信息
+    std::cout << "Converted image size: " << resMat.size() 
+              << ", depth: " << resMat.depth() 
+              << ", channels: " << resMat.channels() 
+              << ", type: " << resMat.type() << std::endl;
 
+    return resMat;
+}
 //************************************
 // Method:    cvmatToAvframe
 // Access:    public
@@ -133,6 +152,8 @@ AVFrame *cvmatToAvframe(const cv::Mat *image, AVFrame *frame) {
  */
 bool correct_image(AVFrame *frame_input, AVFrame *frame_output)
 {
+
+    std::cout << "Correcting image..." << std::endl;
     if (!frame_input || !frame_output) {
         return false;
     }
@@ -185,6 +206,8 @@ bool correct_image(AVFrame *frame_input, AVFrame *frame_output)
     cv::Rect roi(leftCropWidth, topCropHeight, drcimg.cols - leftCropWidth - rightCropWidth, drcimg.rows - topCropHeight - bottomCropHeight);
     cv::Mat croppedImg = drcimg(roi);
 
+    cv::imwrite("corrected.jpg", croppedImg);
+
     // 转换为 AVFrame
     cvmatToAvframe(&croppedImg, frame_output);
 
@@ -228,29 +251,60 @@ bool image_fusion(AVFrame *frame1, AVFrame *frame2, AVFrame *frame_fused, bool i
             av_frame_free(&frame_corrected2);
             return false;
         }
+
+        img1 = avframeToCvmat(frame_corrected1);
+        img2 = avframeToCvmat(frame_corrected2);
+        
+        av_frame_free(&frame_corrected1);
+        av_frame_free(&frame_corrected2);
     } else {
         // 转换输入帧为 cv::Mat
         img1 = avframeToCvmat(frame1);
         img2 = avframeToCvmat(frame2);
     }
-    // 创建 SIFT 特征检测器
-    cv::Ptr<cv::SIFT> detector = cv::SIFT::create(1000);
+
+    // 检查图像是否有效
+    if (img1.empty() || img2.empty()) {
+        std::cerr << "One or both input images are empty." << std::endl;
+        return false; // 图像为空，返回失败
+    }
+
+    // 创建 ORB 特征检测器
+    cv::Ptr<cv::ORB> detector = cv::ORB::create(1000);
     std::vector<cv::KeyPoint> keypoints1, keypoints2;
     cv::Mat descriptors1, descriptors2;
 
+    // 检测特征点和计算描述符
     detector->detectAndCompute(img1, cv::Mat(), keypoints1, descriptors1);
     detector->detectAndCompute(img2, cv::Mat(), keypoints2, descriptors2);
 
+    // 如果特征点数量为零，返回失败
+    if (keypoints1.empty() || keypoints2.empty()) {
+        std::cerr << "No keypoints detected in one or both images." << std::endl;
+        return false;
+    }
+
     // 创建暴力匹配器并进行描述子匹配
-    cv::Ptr<cv::BFMatcher> matcher = cv::BFMatcher::create(cv::NORM_L2);
-    std::vector<std::vector<cv::DMatch>> matches;
-    matcher->knnMatch(descriptors1, descriptors2, matches, 2);
+    cv::Ptr<cv::BFMatcher> matcher = cv::BFMatcher::create(cv::NORM_HAMMING, true);
+    std::vector<cv::DMatch> matches;
+    matcher->match(descriptors1, descriptors2, matches);
 
     // 筛选出良好的匹配点对
     std::vector<cv::DMatch> good_matches;
+    double max_dist = 0; 
+    double min_dist = 100;
+
+    // 找到所有的匹配点中的最大距离和最小距离
     for (const auto& match : matches) {
-        if (match[0].distance < 0.7 * match[1].distance) {
-            good_matches.push_back(match[0]);
+        double dist = match.distance;
+        if (dist < min_dist) min_dist = dist;
+        if (dist > max_dist) max_dist = dist;
+    }
+
+    // 筛选匹配点
+    for (const auto& match : matches) {
+        if (match.distance <= std::max(2 * min_dist, 30.0)) {
+            good_matches.push_back(match);
         }
     }
 
@@ -262,15 +316,25 @@ bool image_fusion(AVFrame *frame1, AVFrame *frame2, AVFrame *frame_fused, bool i
     }
 
     // 使用 RANSAC 算法计算透视变换
+    if (points1.size() < 4 || points2.size() < 4) {
+        std::cerr << "Not enough points for homography calculation." << std::endl;
+        return false; // 点集不足
+    }
+
     cv::Mat homography = cv::findHomography(points2, points1, cv::RANSAC, 5.0);
     if (homography.empty()) {
+        std::cerr << "Homography calculation failed." << std::endl;
         return false; // 透视变换失败
     }
+
+    // 打印变换矩阵
+    std::cout << "Homography Matrix:" << std::endl;
+    std::cout << homography << std::endl;
 
     // 拼接图像
     int dst_width = img1.cols + img2.cols;
     int dst_height = std::max(img1.rows, img2.rows);
-    cv::Mat dst = cv::Mat::zeros(dst_height, dst_width, CV_8UC3);
+    cv::Mat dst = cv::Mat::zeros(dst_height, dst_width, img1.type());
 
     // 将图像 1 复制到目标图像
     img1.copyTo(dst(cv::Rect(0, 0, img1.cols, img1.rows)));
@@ -298,26 +362,34 @@ bool image_fusion(AVFrame *frame1, AVFrame *frame2, AVFrame *frame_fused, bool i
             // 计算权重
             float d1 = static_cast<float>(overlap_rect.x + overlap_rect.width - x) / overlap_rect.width; 
             float d2 = static_cast<float>(x - overlap_rect.x) / overlap_rect.width;
+
             // 确保权重在 [0, 1] 之间
             d1 = std::clamp(d1, 0.0f, 1.0f);
             d2 = std::clamp(d2, 0.0f, 1.0f);
+
             // 获取左图和右图的像素
             cv::Vec3b pixel1 = img1.at<cv::Vec3b>(y, x);
             cv::Vec3b pixel2 = transformed_img2.at<cv::Vec3b>(y, x);
+
             // 进行加权平均（逐通道处理）
             cv::Vec3b blended_pixel;
             blended_pixel[0] = cv::saturate_cast<uchar>(pixel1[0] * d1 + pixel2[0] * d2);
             blended_pixel[1] = cv::saturate_cast<uchar>(pixel1[1] * d1 + pixel2[1] * d2);
             blended_pixel[2] = cv::saturate_cast<uchar>(pixel1[2] * d1 + pixel2[2] * d2);
+
             // 更新拼接后图像的重叠区域像素
             dst.at<cv::Vec3b>(y, x) = blended_pixel;
         }
     }
+
     // 处理右图的非重叠部分
     cv::Rect right_non_overlap_rect(overlap_rect.x + overlap_rect.width, 0, transformed_img2.cols - overlap_rect.x - overlap_rect.width, transformed_img2.rows);
     if (right_non_overlap_rect.width > 0 && right_non_overlap_rect.x < dst.cols) {
         transformed_img2(right_non_overlap_rect).copyTo(dst(right_non_overlap_rect));
     }
+
+    // 保存拼接后的图像
+    cv::imwrite("fused.jpg", dst);
     
     // 转换拼接后的图像为 AVFrame
     cvmatToAvframe(&dst, frame_fused);

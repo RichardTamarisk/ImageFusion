@@ -9,17 +9,57 @@
 // Description: AVFrame转MAT
 //************************************
 cv::Mat avframeToCvmat(const AVFrame *frame) {
+    if (!frame) {
+        std::cerr << "Frame is null." << std::endl;
+        return cv::Mat(); // 返回空 Mat
+    }
+
     int width = frame->width;
     int height = frame->height;
+
+    if (!frame->data[0]) {
+        std::cerr << "Invalid AVFrame data." << std::endl;
+        return cv::Mat(); // 返回空 Mat
+    }
+
+    // 输出格式名称
+    std::cout << "AVFrame format: " << av_get_pix_fmt_name((AVPixelFormat)frame->format) << std::endl;
+
     cv::Mat image(height, width, CV_8UC3);
     int cvLinesizes[1];
-    cvLinesizes[0] = image.step1();
+    cvLinesizes[0] = image.step[0];
+
+    // 创建转换上下文
     SwsContext *conversion = sws_getContext(
         width, height, (AVPixelFormat)frame->format, width, height,
-        AVPixelFormat::AV_PIX_FMT_BGR24, SWS_FAST_BILINEAR, NULL, NULL, NULL);
-    sws_scale(conversion, frame->data, frame->linesize, 0, height, &image.data,
-            cvLinesizes);
+        AV_PIX_FMT_BGR24, SWS_FAST_BILINEAR, NULL, NULL, NULL);
+    
+    if (!conversion) {
+        std::cerr << "Could not create conversion context." << std::endl;
+        return cv::Mat();
+    }
+
+    // 使用 sws_scale 转换图像
+    int result = sws_scale(conversion, frame->data, frame->linesize, 0, height,
+                            reinterpret_cast<uint8_t**>(&image.data), cvLinesizes);
     sws_freeContext(conversion);
+
+    // 检查转换是否成功
+    if (result <= 0) {
+        std::cerr << "sws_scale failed." << std::endl;
+        return cv::Mat(); 
+    }
+
+    std::cout << "Converted image size: " << image.size() 
+              << ", depth: " << image.depth() << std::endl;
+
+    // 检查深度并转换
+    if (image.depth() != CV_8U) {
+        cv::Mat image8u;
+        image.convertTo(image8u, CV_8U);
+        image = image8u; // 更新图像为转换后的版本
+    }
+
     return image;
 }
 
@@ -35,19 +75,49 @@ cv::Mat avframeToCvmat(const AVFrame *frame) {
 AVFrame *cvmatToAvframe(const cv::Mat *image, AVFrame *frame) {
     int width = image->cols;
     int height = image->rows;
-    int cvLinesizes[1];
-    cvLinesizes[0] = image->step1();
+
+    // 创建 AVFrame
     if (frame == NULL) {
         frame = av_frame_alloc();
-        av_image_alloc(frame->data, frame->linesize, width, height,
-                   AVPixelFormat::AV_PIX_FMT_YUV420P, 1);
+        if (!frame) {
+            std::cerr << "Could not allocate AVFrame." << std::endl;
+            return nullptr;
+        }
     }
+
+    // 为 AVFrame 分配数据
+    int ret = av_image_alloc(frame->data, frame->linesize, width, height,
+                             AV_PIX_FMT_BGR24, 1);
+    if (ret < 0) {
+        std::cerr << "Could not allocate image." << std::endl;
+        av_frame_free(&frame);
+        return nullptr;
+    }
+
+    // 设置 AVFrame 的宽高和格式
+    frame->width = width;
+    frame->height = height;
+    frame->format = AV_PIX_FMT_BGR24;
+
+    // 进行颜色空间转换
     SwsContext *conversion = sws_getContext(
-        width, height, AVPixelFormat::AV_PIX_FMT_BGR24, width, height,
-        (AVPixelFormat)frame->format, SWS_FAST_BILINEAR, NULL, NULL, NULL);
-    sws_scale(conversion, &image->data, cvLinesizes, 0, height, frame->data,
-            frame->linesize);
+        width, height, AV_PIX_FMT_BGR24, 
+        width, height, (AVPixelFormat)frame->format, 
+        SWS_FAST_BILINEAR, NULL, NULL, NULL);
+
+    if (!conversion) {
+        std::cerr << "Could not create sws_context." << std::endl;
+        av_frame_free(&frame);
+        return nullptr;
+    }
+
+    int cvLinesizes[1];
+    cvLinesizes[0] = image->step1();
+    
+    // 转换图像
+    sws_scale(conversion, &image->data, cvLinesizes, 0, height, frame->data, frame->linesize);
     sws_freeContext(conversion);
+    
     return frame;
 }
 

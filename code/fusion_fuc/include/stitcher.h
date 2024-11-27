@@ -4,18 +4,20 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <iostream>
-#include <libavformat/avformat.h>
-#include <libavcodec/avcodec.h>
-#include <libavutil/channel_layout.h>
-#include <libavutil/opt.h>
 #include <opencv2/features2d.hpp>
 #include <chrono>
 #include <opencv2/calib3d.hpp>
 #include <opencv2/opencv.hpp>
+
+extern "C" {
+#include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
+#include <libavutil/channel_layout.h>
+#include <libavutil/opt.h>
 #include <libavutil/frame.h>
 #include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
-#include <libavutil/samplefmt.h>
+}
 
 cv::Mat avframeToCvmat(const AVFrame *frame);
 

@@ -10,9 +10,6 @@ set(FFMPEG_LIBRARIES /usr/local/lib)
 # 查找 OpenCV
 find_package(OpenCV REQUIRED)
 
-# 查找 SDL2
-find_package(SDL2 REQUIRED)
-
 # 添加可执行文件
 add_executable(DisplayImage main.cpp src/stitcher.cpp)
 
@@ -20,7 +17,6 @@ add_executable(DisplayImage main.cpp src/stitcher.cpp)
 target_include_directories(DisplayImage PRIVATE 
     ${FFMPEG_INCLUDE_DIRS}  # FFmpeg 包含目录
     ${OpenCV_INCLUDE_DIRS}   # OpenCV 包含目录
-    ${SDL2_INCLUDE_DIRS}     # SDL2 包含目录
     ${CMAKE_CURRENT_SOURCE_DIR}/include  # 自定义头文件目录
 )
 
@@ -32,5 +28,4 @@ target_link_libraries(DisplayImage
     ${FFMPEG_LIBRARIES}/libavutil.so 
     ${FFMPEG_LIBRARIES}/libswscale.so 
     ${OpenCV_LIBS} 
-    SDL2::SDL2
 )

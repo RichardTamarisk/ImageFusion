@@ -270,7 +270,7 @@ bool image_fusion(AVFrame *frame1, AVFrame *frame2, AVFrame *frame_fused, bool i
     }
 
     // 创建 ORB 特征检测器
-    cv::Ptr<cv::ORB> detector = cv::ORB::create(1000);
+    cv::Ptr<cv::ORB> detector = cv::ORB::create(10000);
     std::vector<cv::KeyPoint> keypoints1, keypoints2;
     cv::Mat descriptors1, descriptors2;
 
@@ -301,6 +301,15 @@ bool image_fusion(AVFrame *frame1, AVFrame *frame2, AVFrame *frame_fused, bool i
         if (dist > max_dist) max_dist = dist;
     }
 
+    // // 绘制特征点
+    // cv::Mat img1_keypoints, img2_keypoints;
+    // cv::drawKeypoints(img1, keypoints1, img1_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+    // cv::drawKeypoints(img2, keypoints2, img2_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+
+    // // 保存绘制的特征点图像
+    // cv::imwrite("keypoints_img1.jpg", img1_keypoints);
+    // cv::imwrite("keypoints_img2.jpg", img2_keypoints);
+
     // 筛选匹配点
     for (const auto& match : matches) {
         if (match.distance <= std::max(2 * min_dist, 30.0)) {
@@ -330,6 +339,7 @@ bool image_fusion(AVFrame *frame1, AVFrame *frame2, AVFrame *frame_fused, bool i
     // 打印变换矩阵
     std::cout << "Homography Matrix:" << std::endl;
     std::cout << homography << std::endl;
+
 
     // 拼接图像
     int dst_width = img1.cols + img2.cols;

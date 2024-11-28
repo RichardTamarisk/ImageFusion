@@ -80,20 +80,6 @@ public:
         }
         return true;
     }
-
-    /**
-     * Corrects the lens distortion of an image represented by an AVFrame and crops it.
-     *
-     * This function takes an input AVFrame, applies lens distortion correction,
-     * and crops the resulting image to remove unwanted borders.
-     *
-     * @param frame_input The input AVFrame containing the image data to be corrected.
-     * @param frame_output The output AVFrame that will contain the corrected and cropped image.
-     * @return True if the correction and cropping process is successful, false otherwise.
-     */
-    // bool correct_image(AVFrame *frame_input, AVFrame *frame_output) {}
-
-    
     /**
      * Fuses two AVFrames into a single fused frame.
      *
@@ -107,7 +93,7 @@ public:
      * @return True if the fusion process is successful, false otherwise.
      */
     // This function declare here just to show interface design
-    // bool image_fusion(AVFrame *frame1, AVFrame *frame2, AVFrame *frame_fused, bool is_correct) {}
+    // bool image_fusion(AVFrame *frame1, AVFrame *frame2, AVFrame *frame_fused, bool is_correct){}
 
     void run() {
         AVFrame* frame1 = av_frame_alloc();
@@ -136,7 +122,7 @@ public:
                 queue_map_[1]->pop();
 
                 // Perform image fusion
-                if (image_fusion(frame1, frame2, frame_fused)) {
+                if (image_fusion(frame1, frame2, frame_fused, true)) {
                     queue_frame_fused_->push(*frame_fused);
                 }
             }

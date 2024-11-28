@@ -24,7 +24,7 @@ cv::Mat avframeToCvmat(const AVFrame *frame) {
     SwsContext* avFrameToOpenCVBGRSwsContext = sws_getContext(
         image_width,
         image_height,
-        (AVPixelFormat)frame->format, // 确保这里使用正确的源格式
+        (AVPixelFormat)frame->format, 
         image_width,
         image_height,
         AV_PIX_FMT_BGR24,
@@ -38,17 +38,17 @@ cv::Mat avframeToCvmat(const AVFrame *frame) {
     }
 
     // 使用 sws_scale 转换图像
-    const uint8_t *srcSlice[1] = { frame->data[0] }; // 创建指向源数据的指针数组
-    int srcLinesizes[1] = { frame->linesize[0] }; // 源数据的步幅
+    const uint8_t *srcSlice[1] = { frame->data[0] }; 
+    int srcLinesizes[1] = { frame->linesize[0] }; 
 
     // 使用 int 类型的目标步幅
-    int dstLinesizes[1] = { static_cast<int>(resMat.step[0]) }; // 使用转换后的步幅
+    int dstLinesizes[1] = { static_cast<int>(resMat.step[0]) }; 
 
     int result = sws_scale(avFrameToOpenCVBGRSwsContext,
                             srcSlice, srcLinesizes,
                             0,
                             image_height,
-                            reinterpret_cast<uint8_t* const*>(&resMat.data), // 确保这里是正确的指针类型
+                            reinterpret_cast<uint8_t* const*>(&resMat.data), 
                             dstLinesizes);
 
     // 释放转换上下文
@@ -70,15 +70,9 @@ cv::Mat avframeToCvmat(const AVFrame *frame) {
     if (resMat.depth() != CV_8U) {
         cv::Mat image8u;
         resMat.convertTo(image8u, CV_8U);
-        resMat = image8u; // 更新图像为转换后的版本
+        resMat = image8u; 
         std::cout << "Converted image depth: " << resMat.depth() << std::endl;
     }
-
-    // 输出图像信息
-    std::cout << "Converted image size: " << resMat.size() 
-              << ", depth: " << resMat.depth() 
-              << ", channels: " << resMat.channels() 
-              << ", type: " << resMat.type() << std::endl;
 
     return resMat;
 }
@@ -152,8 +146,6 @@ AVFrame *cvmatToAvframe(const cv::Mat *image, AVFrame *frame) {
  */
 bool correct_image(AVFrame *frame_input, AVFrame *frame_output)
 {
-
-    std::cout << "Correcting image..." << std::endl;
     if (!frame_input || !frame_output) {
         return false;
     }
@@ -266,7 +258,7 @@ bool image_fusion(AVFrame *frame1, AVFrame *frame2, AVFrame *frame_fused, bool i
     // 检查图像是否有效
     if (img1.empty() || img2.empty()) {
         std::cerr << "One or both input images are empty." << std::endl;
-        return false; // 图像为空，返回失败
+        return false; 
     }
 
     // 创建 ORB 特征检测器
@@ -301,15 +293,6 @@ bool image_fusion(AVFrame *frame1, AVFrame *frame2, AVFrame *frame_fused, bool i
         if (dist > max_dist) max_dist = dist;
     }
 
-    // // 绘制特征点
-    // cv::Mat img1_keypoints, img2_keypoints;
-    // cv::drawKeypoints(img1, keypoints1, img1_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
-    // cv::drawKeypoints(img2, keypoints2, img2_keypoints, cv::Scalar::all(-1), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
-
-    // // 保存绘制的特征点图像
-    // cv::imwrite("keypoints_img1.jpg", img1_keypoints);
-    // cv::imwrite("keypoints_img2.jpg", img2_keypoints);
-
     // 筛选匹配点
     for (const auto& match : matches) {
         if (match.distance <= std::max(2 * min_dist, 30.0)) {
@@ -327,18 +310,14 @@ bool image_fusion(AVFrame *frame1, AVFrame *frame2, AVFrame *frame_fused, bool i
     // 使用 RANSAC 算法计算透视变换
     if (points1.size() < 4 || points2.size() < 4) {
         std::cerr << "Not enough points for homography calculation." << std::endl;
-        return false; // 点集不足
+        return false; 
     }
 
     cv::Mat homography = cv::findHomography(points2, points1, cv::RANSAC, 5.0);
     if (homography.empty()) {
         std::cerr << "Homography calculation failed." << std::endl;
-        return false; // 透视变换失败
+        return false; 
     }
-
-    // 打印变换矩阵
-    std::cout << "Homography Matrix:" << std::endl;
-    std::cout << homography << std::endl;
 
 
     // 拼接图像

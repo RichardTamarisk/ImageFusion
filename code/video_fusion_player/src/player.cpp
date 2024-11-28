@@ -133,7 +133,7 @@ int main(int argc, char *argv[])
     
     // Init SDL
     if (SDL_Init(SDL_INIT_VIDEO)){
-        fprintf(stderr, "Couldn't initialize SDL - %s\n", SDL_GetError);
+        fprintf(stderr, "Couldn't initialize SDL - %s\n", (SDL_GetError()));
         return -1;
     }
     // Create window from SDL
@@ -143,7 +143,7 @@ int main(int argc, char *argv[])
                            w_width, w_height,
                            SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
     if(!win) {
-        fprintf(stderr, "Failed to create window, %s\n", SDL_GetError);
+        fprintf(stderr, "Failed to create window, %s\n", SDL_GetError());
         return -1;
     }   
     renderer = SDL_CreateRenderer(win, -1, 0);

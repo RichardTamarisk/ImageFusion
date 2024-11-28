@@ -14,6 +14,7 @@
 #include "stream_context.hpp"
 #include "task.hpp"
 
+
 typedef struct VideoState {
     // AVCodecContext *avctx;
     // AVPacket       *pkt;

@@ -2,6 +2,7 @@
 #define TASK_HPP
 
 #include "common.h"
+#include "stitcher.h"
 
 class Task {
 public:

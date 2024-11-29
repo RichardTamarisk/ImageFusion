@@ -1,4 +1,4 @@
-#include "../include/stitcher.h"
+#include "stitcher.h"
 
 //************************************
 // Method:    avframeToCvmat
@@ -269,16 +269,6 @@ bool image_fusion(AVFrame *frame1, AVFrame *frame2, AVFrame *frame_fused, bool i
     // 检测特征点和计算描述符
     detector->detectAndCompute(img1, cv::Mat(), keypoints1, descriptors1);
     detector->detectAndCompute(img2, cv::Mat(), keypoints2, descriptors2);
-
-    // 如果特征点数量为零，返回失败
-    if (keypoints1.empty() || keypoints2.empty()) {
-        std::cerr << "No keypoints detected in one or both images." << std::endl;
-        return false;
-    }
-
-    // 打印检测到的特征点数量
-    std::cout << "Number of keypoints in image 1: " << keypoints1.size() << std::endl;
-    std::cout << "Number of keypoints in image 2: " << keypoints2.size() << std::endl;
 
     // 如果特征点数量为零，返回失败
     if (keypoints1.empty() || keypoints2.empty()) {

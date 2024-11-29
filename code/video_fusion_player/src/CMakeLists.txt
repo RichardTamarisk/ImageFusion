@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
 project(DisplayImage)
 
+# Set the C++ standard to C++17
+set(CMAKE_CXX_STANDARD 17)
+
 # Find the OpenCV library
 find_package(OpenCV REQUIRED)
 
@@ -13,17 +16,37 @@ pkg_check_modules(FFmpeg REQUIRED IMPORTED_TARGET
     libavcodec
     libavformat
     libavutil
+    libswscale
 )
 
-# Add the executable
+# Add the dynamic library Stitcher from stitcher.cpp
+add_library(Stitcher SHARED stitcher.cpp)
+
+# Specify include directories for the Stitcher library
+target_include_directories(Stitcher PRIVATE 
+    ${FFmpeg_INCLUDE_DIRS}  
+    ${OpenCV_INCLUDE_DIRS}  
+    ${CMAKE_CURRENT_SOURCE_DIR}  # Include current source directory for headers
+)
+
+# Add the executable DisplayImage from player.cpp
 add_executable(DisplayImage player.cpp)
 
-# Link the libraries to the executable
-target_link_libraries(DisplayImage 
-    PkgConfig::FFmpeg
-    ${OpenCV_LIBS}  # Use OpenCV_LIBS replace OpenCV::OpenCV
-    SDL2::SDL2
+# Specify include directories for the DisplayImage executable
+target_include_directories(DisplayImage PRIVATE 
+    ${FFmpeg_INCLUDE_DIRS}  
+    ${OpenCV_INCLUDE_DIRS}  
+    ${SDL2_INCLUDE_DIRS}  
+    ${CMAKE_CURRENT_SOURCE_DIR}  # Include current source directory for headers
 )
 
-# Include the directories for the libraries
-include_directories(${SDL2_INCLUDE_DIRS} ${FFmpeg_INCLUDE_DIRS})
+# Link libraries to the DisplayImage executable
+target_link_libraries(DisplayImage 
+    Stitcher  
+    PkgConfig::FFmpeg  
+    ${OpenCV_LIBS}  
+    SDL2::SDL2  
+)
+
+# The following line is redundant and can be removed
+# include_directories(${SDL2_INCLUDE_DIRS} ${FFmpeg_INCLUDE_DIRS})

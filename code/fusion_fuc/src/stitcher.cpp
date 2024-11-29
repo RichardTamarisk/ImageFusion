@@ -276,6 +276,16 @@ bool image_fusion(AVFrame *frame1, AVFrame *frame2, AVFrame *frame_fused, bool i
         return false;
     }
 
+    // 打印检测到的特征点数量
+    std::cout << "Number of keypoints in image 1: " << keypoints1.size() << std::endl;
+    std::cout << "Number of keypoints in image 2: " << keypoints2.size() << std::endl;
+
+    // 如果特征点数量为零，返回失败
+    if (keypoints1.empty() || keypoints2.empty()) {
+        std::cerr << "No keypoints detected in one or both images." << std::endl;
+        return false;
+    }
+
     // 创建暴力匹配器并进行描述子匹配
     cv::Ptr<cv::BFMatcher> matcher = cv::BFMatcher::create(cv::NORM_HAMMING, true);
     std::vector<cv::DMatch> matches;

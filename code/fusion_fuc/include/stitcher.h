@@ -20,7 +20,7 @@ extern "C" {
 #include <libavutil/pixfmt.h>
 }
 
-cv::Mat avframeToCvmat(const AVFrame *frame);
+cv::Mat avframeToCvmat(const AVFrame *yuv420Frame);
 
 AVFrame *cvmatToAvframe(const cv::Mat *image, AVFrame *frame);
 

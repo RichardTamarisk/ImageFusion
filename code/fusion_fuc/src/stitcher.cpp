@@ -8,74 +8,64 @@
 // Parameter: const AVFrame * frame
 // Description: AVFrame转MAT
 //************************************
-cv::Mat avframeToCvmat(const AVFrame *frame) {
-	if (!frame) {
-        std::cerr << "Frame is null." << std::endl;
-        return cv::Mat(); // 返回空 Mat
+cv::Mat avframeToCvmat(const AVFrame *yuv420Frame) {
+
+    // 获取 AVFrame 信息
+    int srcW = yuv420Frame->width;
+    int srcH = yuv420Frame->height;
+    AVPixelFormat pixelFormat = (AVPixelFormat)yuv420Frame->format;
+
+    // 检查并调整宽度和高度为偶数
+    if (srcW % 2 != 0) {
+        srcW--; // 减去1以确保为偶数
     }
-
-    int image_width = frame->width;
-    int image_height = frame->height;
-
-    // 创建 OpenCV Mat 对象
-    cv::Mat resMat(image_height, image_width, CV_8UC3);
-
+    if (srcH % 2 != 0) {
+        srcH--; // 减去1以确保为偶数
+    }
     // 创建转换上下文
-    SwsContext* avFrameToOpenCVBGRSwsContext = sws_getContext(
-        image_width,
-        image_height,
-        (AVPixelFormat)frame->format, 
-        image_width,
-        image_height,
-        AV_PIX_FMT_BGR24,
-        SWS_FAST_BILINEAR,
-        nullptr, nullptr, nullptr
-    );
-
-    if (!avFrameToOpenCVBGRSwsContext) {
+    SwsContext *swsCtx = sws_getContext(srcW, srcH, (AVPixelFormat)yuv420Frame->format,
+                                          srcW, srcH, AV_PIX_FMT_BGR24,
+                                          SWS_BICUBIC, nullptr, nullptr, nullptr);
+    if (!swsCtx) {
         std::cerr << "Could not create sws context." << std::endl;
         return cv::Mat();
     }
 
-    // 使用 sws_scale 转换图像
-    const uint8_t *srcSlice[1] = { frame->data[0] }; 
-    int srcLinesizes[1] = { frame->linesize[0] }; 
+    // 生成 Mat 对象
+    cv::Mat mat;
+    mat.create(cv::Size(srcW, srcH), CV_8UC3);
 
-    // 使用 int 类型的目标步幅
-    int dstLinesizes[1] = { static_cast<int>(resMat.step[0]) }; 
+    // 创建一个新的 BGR AVFrame 用于存储转换后的数据
+    AVFrame *bgr24Frame = av_frame_alloc();
+    if (!bgr24Frame) {
+        std::cerr << "Could not allocate AVFrame for BGR." << std::endl;
+        sws_freeContext(swsCtx);
+        return cv::Mat();
+    }
 
-    int result = sws_scale(avFrameToOpenCVBGRSwsContext,
-                            srcSlice, srcLinesizes,
-                            0,
-                            image_height,
-                            reinterpret_cast<uint8_t* const*>(&resMat.data), 
-                            dstLinesizes);
+    // 填充 BGR AVFrame 的数据
+    av_image_fill_arrays(bgr24Frame->data, bgr24Frame->linesize, (uint8_t *)mat.data,
+                         AV_PIX_FMT_BGR24, srcW, srcH, 1);
 
-    // 释放转换上下文
-    sws_freeContext(avFrameToOpenCVBGRSwsContext);
+    // 进行格式转换
+    int result = sws_scale(swsCtx,
+                            (const uint8_t* const*)yuv420Frame->data, yuv420Frame->linesize,
+                            0, srcH, bgr24Frame->data, bgr24Frame->linesize);
 
-    // 检查转换是否成功
-    if (result <= 0) {
+    if (result < 0) {
         std::cerr << "sws_scale failed." << std::endl;
+        av_frame_free(&bgr24Frame);
+        sws_freeContext(swsCtx);
         return cv::Mat();
     }
 
-    // 检查 resMat 数据
-    if (resMat.empty() || resMat.data == nullptr) {
-        std::cerr << "Converted image is empty or data is null." << std::endl;
-        return cv::Mat();
-    }
+    // 释放资源
+    av_frame_free(&bgr24Frame);
+    sws_freeContext(swsCtx);
 
-    // 确保图像深度为 CV_8U
-    if (resMat.depth() != CV_8U) {
-        cv::Mat image8u;
-        resMat.convertTo(image8u, CV_8U);
-        resMat = image8u; 
-        std::cout << "Converted image depth: " << resMat.depth() << std::endl;
-    }
-
-    return resMat;
+    return mat;
 }
+
 //************************************
 // Method:    cvmatToAvframe
 // Access:    public
@@ -86,11 +76,18 @@ cv::Mat avframeToCvmat(const AVFrame *frame) {
 // Description: MAT转AVFrame
 //************************************
 AVFrame *cvmatToAvframe(const cv::Mat *image, AVFrame *frame) {
+    if (!image || image->empty()) {
+        std::cerr << "Input image is null or empty." << std::endl;
+        return nullptr;
+    }
+
+    // 获取输入图像的信息
     int width = image->cols;
     int height = image->rows;
+    AVPixelFormat dstFormat = AV_PIX_FMT_YUV420P;
 
-    // 创建 AVFrame
-    if (frame == NULL) {
+    // 创建 AVFrame（如果 frame 为 nullptr，则分配新的 AVFrame）
+    if (frame == nullptr) {
         frame = av_frame_alloc();
         if (!frame) {
             std::cerr << "Could not allocate AVFrame." << std::endl;
@@ -98,39 +95,49 @@ AVFrame *cvmatToAvframe(const cv::Mat *image, AVFrame *frame) {
         }
     }
 
-    // 为 AVFrame 分配数据
-    int ret = av_image_alloc(frame->data, frame->linesize, width, height,
-                             AV_PIX_FMT_BGR24, 1);
-    if (ret < 0) {
-        std::cerr << "Could not allocate image." << std::endl;
-        av_frame_free(&frame);
-        return nullptr;
-    }
-
-    // 设置 AVFrame 的宽高和格式
     frame->width = width;
     frame->height = height;
-    frame->format = AV_PIX_FMT_BGR24;
+    frame->format = dstFormat;
 
-    // 进行颜色空间转换
-    SwsContext *conversion = sws_getContext(
-        width, height, AV_PIX_FMT_BGR24, 
-        width, height, (AVPixelFormat)frame->format, 
-        SWS_FAST_BILINEAR, NULL, NULL, NULL);
-
-    if (!conversion) {
-        std::cerr << "Could not create sws_context." << std::endl;
+    // 初始化 AVFrame 内部空间
+    int ret = av_frame_get_buffer(frame, 32);
+    if (ret < 0) {
+        std::cerr << "Could not allocate the video frame data." << std::endl;
         av_frame_free(&frame);
         return nullptr;
     }
 
-    int cvLinesizes[1];
-    cvLinesizes[0] = image->step1();
-    
-    // 转换图像
-    sws_scale(conversion, &image->data, cvLinesizes, 0, height, frame->data, frame->linesize);
-    sws_freeContext(conversion);
-    
+    ret = av_frame_make_writable(frame);
+    if (ret < 0) {
+        std::cerr << "AVFrame make writable failed." << std::endl;
+        av_frame_free(&frame);
+        return nullptr;
+    }
+
+    // 确保输入图像是 BGR 格式
+    if (image->channels() != 3 || image->type() != CV_8UC3) {
+        std::cerr << "Input image must be a BGR format." << std::endl;
+        av_frame_free(&frame);
+        return nullptr;
+    }
+
+    // 创建用于存储 YUV 数据的 Mat
+    cv::Mat yuvMat(height + height / 2, width, CV_8UC1);  // YUV420P 需要 Y、U 和 V 分量
+
+    // 转换颜色空间为 YUV420
+    cv::cvtColor(*image, yuvMat, cv::COLOR_BGR2YUV_I420);
+
+    // 拷贝数据到 AVFrame
+    int frame_size = width * height;
+    memcpy(frame->data[0], yuvMat.data, frame_size);                // Y
+    memcpy(frame->data[1], yuvMat.data + frame_size, frame_size / 4);  // U
+    memcpy(frame->data[2], yuvMat.data + frame_size * 5 / 4, frame_size / 4);  // V
+
+    // 打印 AVFrame 信息
+    std::cout << "Converted AVFrame Information:" << std::endl;
+    std::cout << "Width: " << frame->width << std::endl;
+    std::cout << "Height: " << frame->height << std::endl;
+    std::cout << "Pixel Format: " << av_get_pix_fmt_name((AVPixelFormat)frame->format) << std::endl;
     return frame;
 }
 
@@ -152,6 +159,9 @@ bool correct_image(AVFrame *frame_input, AVFrame *frame_output)
     
     // 将 AVFrame 转换为 cv::Mat
     cv::Mat img = avframeToCvmat(frame_input);
+
+    // cv::imshow("avframeToCvmat", img);
+    // cv::waitKey(0);
 
     // 创建输出图像
     cv::Mat drcimg(img.rows, img.cols, CV_8UC3);
@@ -255,6 +265,11 @@ bool image_fusion(AVFrame *frame1, AVFrame *frame2, AVFrame *frame_fused, bool i
         img2 = avframeToCvmat(frame2);
     }
 
+    // cv::imshow("In fusion avframeToCvmat", img1);
+    // cv::waitKey(0);
+    // cv::imshow("In fusion avframeToCvmat", img2);
+    // cv::waitKey(0);
+
     // 检查图像是否有效
     if (img1.empty() || img2.empty()) {
         std::cerr << "One or both input images are empty." << std::endl;
@@ -279,12 +294,6 @@ bool image_fusion(AVFrame *frame1, AVFrame *frame2, AVFrame *frame_fused, bool i
     // 打印检测到的特征点数量
     std::cout << "Number of keypoints in image 1: " << keypoints1.size() << std::endl;
     std::cout << "Number of keypoints in image 2: " << keypoints2.size() << std::endl;
-
-    // 如果特征点数量为零，返回失败
-    if (keypoints1.empty() || keypoints2.empty()) {
-        std::cerr << "No keypoints detected in one or both images." << std::endl;
-        return false;
-    }
 
     // 创建暴力匹配器并进行描述子匹配
     cv::Ptr<cv::BFMatcher> matcher = cv::BFMatcher::create(cv::NORM_HAMMING, true);
@@ -381,6 +390,9 @@ bool image_fusion(AVFrame *frame1, AVFrame *frame2, AVFrame *frame_fused, bool i
         }
     }
 
+    // cv::imshow("after fusion", dst);
+    // cv::waitKey(0);
+
     // 处理右图的非重叠部分
     cv::Rect right_non_overlap_rect(overlap_rect.x + overlap_rect.width, 0, transformed_img2.cols - overlap_rect.x - overlap_rect.width, transformed_img2.rows);
     if (right_non_overlap_rect.width > 0 && right_non_overlap_rect.x < dst.cols) {
@@ -388,10 +400,15 @@ bool image_fusion(AVFrame *frame1, AVFrame *frame2, AVFrame *frame_fused, bool i
     }
 
     // 保存拼接后的图像
-    cv::imwrite("fused.jpg", dst);
+    cv::imwrite("Befor_cvmatToAvframe.jpg", dst);
     
     // 转换拼接后的图像为 AVFrame
     cvmatToAvframe(&dst, frame_fused);
+
+    cv::imwrite("After_cvmatToAvframe.jpg", avframeToCvmat(frame_fused));
+
+    // cv::imshow("cvmatToAvframe", avframeToCvmat(frame_fused));
+    // cv::waitKey(0);
 
     return true;
 }
